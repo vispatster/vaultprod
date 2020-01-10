@@ -10,7 +10,8 @@ metadata:
     app.kubernetes.io/name: vault
     app.kubernetes.io/instance: vault
     app.kubernetes.io/managed-by: Tiller
-data:  extraconfig-from-values.hcl: |-
+data:  
+  extraconfig-from-values.hcl: |-
     disable_mlock = true
     ui = true
 
