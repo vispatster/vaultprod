@@ -22,7 +22,7 @@ data:
     }
     storage "consul" {
       path = "vault"
-      address = "consul:8500"
+      address = "HOST_IP:8500"
     }
 
 
