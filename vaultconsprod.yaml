@@ -1,748 +1,19 @@
+
 ---
-# Source: consul/templates/client-config-configmap.yaml
-# ConfigMap with extra configuration specified directly to the chart
-# for client agents only.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: consuldev-consul-client-config
-  namespace: vlt-cons-dev
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-data:
-  extra-from-values.json: |-
-    {}
-    
-
----
-# Source: consul/templates/server-config-configmap.yaml
-# StatefulSet to run the actual Consul server cluster.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: consuldev-consul-server-config
-  namespace: vlt-cons-dev
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-data:
-  extra-from-values.json: |-
-    {}
-    
-
----
-# Source: consul/templates/client-serviceaccount.yaml
-
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: consuldev-consul-client
-  namespace: vlt-cons-dev
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-
----
-# Source: consul/templates/server-serviceaccount.yaml
-
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: consuldev-consul-server
-  namespace: vlt-cons-dev
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-
----
-# Source: consul/templates/client-clusterrole.yaml
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: consuldev-consul-client
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-rules: []
-
----
-# Source: consul/templates/server-clusterrole.yaml
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: consuldev-consul-server
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-rules: []
-
----
-# Source: consul/templates/client-clusterrolebinding.yaml
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: consuldev-consul-client
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: consuldev-consul-client
-subjects:
-  - kind: ServiceAccount
-    name: consuldev-consul-client
-    namespace: vlt-cons-dev
-
----
-# Source: consul/templates/server-clusterrolebinding.yaml
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: consuldev-consul-server
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: consuldev-consul-server
-subjects:
-  - kind: ServiceAccount
-    name: consuldev-consul-server
-    namespace: vlt-cons-dev
-
----
-# Source: consul/templates/dns-service.yaml
-# Service for Consul DNS.
-apiVersion: v1
-kind: Service
-metadata:
-  name: consuldev-consul-dns
-  namespace: vlt-cons-dev
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-spec:
-  ports:
-    - name: dns-tcp
-      port: 53
-      protocol: "TCP"
-      targetPort: dns-tcp
-    - name: dns-udp
-      port: 53
-      protocol: "UDP"
-      targetPort: dns-udp
-  selector:
-    app: consul
-    release: "consuldev"
-    hasDNS: "true"
-
----
-# Source: consul/templates/server-service.yaml
-# Headless service for Consul server DNS entries. This service should only
-# point to Consul servers. For access to an agent, one should assume that
-# the agent is installed locally on the node and the NODE_IP should be used.
-# If the node can't run a Consul agent, then this service can be used to
-# communicate directly to a server agent.
-apiVersion: v1
-kind: Service
-metadata:
-  name: consuldev-consul-server
-  namespace: vlt-cons-dev
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-  annotations:
-    # This must be set in addition to publishNotReadyAddresses due
-    # to an open issue where it may not work:
-    # https://github.com/kubernetes/kubernetes/issues/58662
-    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
-spec:
-  clusterIP: None
-  # We want the servers to become available even if they're not ready
-  # since this DNS is also used for join operations.
-  publishNotReadyAddresses: true
-  ports:
-    - name: http
-      port: 8500
-      targetPort: 8500
-    - name: serflan-tcp
-      protocol: "TCP"
-      port: 8301
-      targetPort: 8301
-    - name: serflan-udp
-      protocol: "UDP"
-      port: 8301
-      targetPort: 8301
-    - name: serfwan-tcp
-      protocol: "TCP"
-      port: 8302
-      targetPort: 8302
-    - name: serfwan-udp
-      protocol: "UDP"
-      port: 8302
-      targetPort: 8302
-    - name: server
-      port: 8300
-      targetPort: 8300
-    - name: dns-tcp
-      protocol: "TCP"
-      port: 8600
-      targetPort: dns-tcp
-    - name: dns-udp
-      protocol: "UDP"
-      port: 8600
-      targetPort: dns-udp
-  selector:
-    app: consul
-    release: "consuldev"
-    component: server
-
----
-# Source: consul/templates/ui-service.yaml
-# UI Service for Consul Server
-apiVersion: v1
-kind: Service
-metadata:
-  name: consuldev-consul-ui
-  namespace: vlt-cons-dev
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-spec:
-  selector:
-    app: consul
-    release: "consuldev"
-    component: server
-  ports:
-    - name: http
-      port: 80
-      targetPort: 8500
-
----
-# Source: consul/templates/client-daemonset.yaml
-# DaemonSet to run the Consul clients on every node.
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: consuldev-consul
-  namespace: vlt-cons-dev
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-spec:
-  selector:
-    matchLabels:
-      app: consul
-      chart: consul-helm
-      release: consuldev
-      component: client
-      hasDNS: "true"
-  template:
-    metadata:
-      labels:
-        app: consul
-        chart: consul-helm
-        release: consuldev
-        component: client
-        hasDNS: "true"
-      annotations:
-        "consul.hashicorp.com/connect-inject": "false"
-    spec:
-      terminationGracePeriodSeconds: 10
-      serviceAccountName: consuldev-consul-client
-
-      # Consul agents require a directory for data, even clients. The data
-      # is okay to be wiped though if the Pod is removed, so just use an
-      # emptyDir volume.
-      volumes:
-        - name: data
-          emptyDir: {}
-        - name: config
-          configMap:
-            name: consuldev-consul-client-config
-
-      containers:
-        - name: consul
-          image: "consul:1.6.2"
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            - name: NODE
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-            
-          command:
-            - "/bin/sh"
-            - "-ec"
-            - |
-              CONSUL_FULLNAME="consuldev-consul"
-
-              exec /bin/consul agent \
-                -node="${NODE}" \
-                -advertise="${POD_IP}" \
-                -bind=0.0.0.0 \
-                -client=0.0.0.0 \
-                -hcl="ports { grpc = 8502 }" \
-                -config-dir=/consul/config \
-                -datacenter=dc1 \
-                -data-dir=/consul/data \
-                -retry-join=${CONSUL_FULLNAME}-server-0.${CONSUL_FULLNAME}-server.${NAMESPACE}.svc \
-                -retry-join=${CONSUL_FULLNAME}-server-1.${CONSUL_FULLNAME}-server.${NAMESPACE}.svc \
-                -retry-join=${CONSUL_FULLNAME}-server-2.${CONSUL_FULLNAME}-server.${NAMESPACE}.svc \
-                -domain=consul
-          volumeMounts:
-            - name: data
-              mountPath: /consul/data
-            - name: config
-              mountPath: /consul/config
-          lifecycle:
-            preStop:
-              exec:
-                command:
-                - /bin/sh
-                - -c
-                - consul leave
-          ports:
-            - containerPort: 8500
-              hostPort: 8500
-              name: http
-            - containerPort: 8502
-              hostPort: 8502
-              name: grpc
-            - containerPort: 8301
-              name: serflan
-            - containerPort: 8302
-              name: serfwan
-            - containerPort: 8300
-              name: server
-            - containerPort: 8600
-              name: dns-tcp
-              protocol: "TCP"
-            - containerPort: 8600
-              name: dns-udp
-              protocol: "UDP"
-          readinessProbe:
-            # NOTE(mitchellh): when our HTTP status endpoints support the
-            # proper status codes, we should switch to that. This is temporary.
-            exec:
-              command:
-                - "/bin/sh"
-                - "-ec"
-                - |
-                  curl http://127.0.0.1:8500/v1/status/leader 2>/dev/null | \
-                  grep -E '".+"'
-
----
-# Source: consul/templates/tests/test-runner.yaml
-
-apiVersion: v1
-kind: Pod
-metadata:
-  name: "consuldev-consul-test"
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-  annotations:
-    "helm.sh/hook": test-success
-spec:
-  containers:
-    - name: consul-test
-      image: "consul:1.6.2"
-      env:
-        - name: HOST_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.hostIP
-      command:
-        - "/bin/sh"
-        - "-ec"
-        - |
-            export VALUE="consuldev"
-            export CONSUL_HTTP_ADDR="${HOST_IP}:8500"
-            consul kv delete _consul_helm_test
-            consul kv put _consul_helm_test $VALUE
-            [ `consul kv get _consul_helm_test` = "$VALUE" ]
-            consul kv delete _consul_helm_test
-  restartPolicy: Never
-
----
-# Source: consul/templates/server-statefulset.yaml
-# StatefulSet to run the actual Consul server cluster.
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: consuldev-consul-server
-  namespace: vlt-cons-dev
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-spec:
-  serviceName: consuldev-consul-server
-  podManagementPolicy: Parallel
-  replicas: 3
-  selector:
-    matchLabels:
-      app: consul
-      chart: consul-helm
-      release: consuldev
-      component: server
-      hasDNS: "true"
-  template:
-    metadata:
-      labels:
-        app: consul
-        chart: consul-helm
-        release: consuldev
-        component: server
-        hasDNS: "true"
-      annotations:
-        "consul.hashicorp.com/connect-inject": "false"
-    spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            - labelSelector:
-                matchLabels:
-                  app: consul
-                  release: "consuldev"
-                  component: server
-              topologyKey: kubernetes.io/hostname
-      terminationGracePeriodSeconds: 10
-      serviceAccountName: consuldev-consul-server
-      securityContext:
-        fsGroup: 1000
-      volumes:
-        - name: config
-          configMap:
-            name: consuldev-consul-server-config
-      containers:
-        - name: consul
-          image: "consul:1.6.2"
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            
-          command:
-            - "/bin/sh"
-            - "-ec"
-            - |
-              CONSUL_FULLNAME="consuldev-consul"
-
-              exec /bin/consul agent \
-                -advertise="${POD_IP}" \
-                -bind=0.0.0.0 \
-                -bootstrap-expect=3 \
-                -client=0.0.0.0 \
-                -config-dir=/consul/config \
-                -datacenter=dc1 \
-                -data-dir=/consul/data \
-                -domain=consul \
-                -hcl="connect { enabled = true }" \
-                -ui \
-                -retry-join=${CONSUL_FULLNAME}-server-0.${CONSUL_FULLNAME}-server.${NAMESPACE}.svc \
-                -retry-join=${CONSUL_FULLNAME}-server-1.${CONSUL_FULLNAME}-server.${NAMESPACE}.svc \
-                -retry-join=${CONSUL_FULLNAME}-server-2.${CONSUL_FULLNAME}-server.${NAMESPACE}.svc \
-                -server
-          volumeMounts:
-            - name: data-vlt-cons-dev
-              mountPath: /consul/data
-            - name: config
-              mountPath: /consul/config
-          lifecycle:
-            preStop:
-              exec:
-                command:
-                - /bin/sh
-                - -c
-                - consul leave
-          ports:
-            - containerPort: 8500
-              name: http
-            - containerPort: 8301
-              name: serflan
-            - containerPort: 8302
-              name: serfwan
-            - containerPort: 8300
-              name: server
-            - containerPort: 8600
-              name: dns-tcp
-              protocol: "TCP"
-            - containerPort: 8600
-              name: dns-udp
-              protocol: "UDP"
-          readinessProbe:
-            # NOTE(mitchellh): when our HTTP status endpoints support the
-            # proper status codes, we should switch to that. This is temporary.
-            exec:
-              command:
-                - "/bin/sh"
-                - "-ec"
-                - |
-                  curl http://127.0.0.1:8500/v1/status/leader 2>/dev/null | \
-                  grep -E '".+"'
-            failureThreshold: 2
-            initialDelaySeconds: 5
-            periodSeconds: 3
-            successThreshold: 1
-            timeoutSeconds: 5
-  volumeClaimTemplates:
-    - metadata:
-        name: data-vlt-cons-dev
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        resources:
-          requests:
-            storage: 10Gi
-
----
-# Source: consul/templates/server-disruptionbudget.yaml
-# PodDisruptionBudget to prevent degrading the server cluster through
-# voluntary cluster changes.
-apiVersion: policy/v1beta1
-kind: PodDisruptionBudget
-metadata:
-  name: consuldev-consul-server
-  namespace: vlt-cons-dev
-  labels:
-    app: consul
-    chart: consul-helm
-    heritage: Tiller
-    release: consuldev
-spec:
-  maxUnavailable: 1
-  selector:
-    matchLabels:
-      app: consul
-      release: "consuldev"
-      component: server
-
----
-# Source: consul/templates/client-podsecuritypolicy.yaml
-
-
----
-# Source: consul/templates/client-snapshot-agent-clusterrole.yaml
-
-
----
-# Source: consul/templates/client-snapshot-agent-clusterrolebinding.yaml
-
-
----
-# Source: consul/templates/client-snapshot-agent-deployment.yaml
-
-
----
-# Source: consul/templates/client-snapshot-agent-podsecuritypolicy.yaml
-
-
----
-# Source: consul/templates/client-snapshot-agent-serviceaccount.yaml
-
-
----
-# Source: consul/templates/connect-inject-authmethod-clusterrole.yaml
-
-
----
-# Source: consul/templates/connect-inject-authmethod-clusterrolebinding.yaml
-
-
----
-# Source: consul/templates/connect-inject-authmethod-serviceaccount.yaml
-
-
----
-# Source: consul/templates/connect-inject-clusterrole.yaml
-# The ClusterRole to enable the Connect injector to get, list, watch and patch MutatingWebhookConfiguration.
-
----
-# Source: consul/templates/connect-inject-clusterrolebinding.yaml
-
-
----
-# Source: consul/templates/connect-inject-deployment.yaml
-# The deployment for running the Connect sidecar injector
-
----
-# Source: consul/templates/connect-inject-mutatingwebhook.yaml
-# The MutatingWebhookConfiguration to enable the Connect injector.
-
----
-# Source: consul/templates/connect-inject-podsecuritypolicy.yaml
-
-
----
-# Source: consul/templates/connect-inject-service.yaml
-# The service for the Connect sidecar injector
-
-
----
-# Source: consul/templates/connect-inject-serviceaccount.yaml
-
-
----
-# Source: consul/templates/enterprise-license-clusterrole.yaml
-
-
----
-# Source: consul/templates/enterprise-license-clusterrolebinding.yaml
-
-
----
-# Source: consul/templates/enterprise-license-serviceaccount.yaml
-
-
----
-# Source: consul/templates/enterprise-license.yaml
-
-
----
-# Source: consul/templates/mesh-gateway-clusterrole.yaml
-
-
----
-# Source: consul/templates/mesh-gateway-clusterrolebinding.yaml
-
-
----
-# Source: consul/templates/mesh-gateway-deployment.yaml
-
-
----
-# Source: consul/templates/mesh-gateway-podsecuritypolicy.yaml
-
-
----
-# Source: consul/templates/mesh-gateway-service.yaml
-
-
----
-# Source: consul/templates/mesh-gateway-serviceaccount.yaml
-
-
----
-# Source: consul/templates/server-acl-init-cleanup-clusterrole.yaml
-
-
----
-# Source: consul/templates/server-acl-init-cleanup-clusterrolebinding.yaml
-
-
----
-# Source: consul/templates/server-acl-init-cleanup-job.yaml
-
-
----
-# Source: consul/templates/server-acl-init-cleanup-serviceaccount.yaml
-
-
----
-# Source: consul/templates/server-acl-init-clusterrole.yaml
-
-
----
-# Source: consul/templates/server-acl-init-clusterrolebinding.yaml
-
-
----
-# Source: consul/templates/server-acl-init-job.yaml
-
-
----
-# Source: consul/templates/server-acl-init-serviceaccount.yaml
-
-
----
-# Source: consul/templates/server-podsecuritypolicy.yaml
-
-
----
-# Source: consul/templates/sync-catalog-clusterrole.yaml
-
-
----
-# Source: consul/templates/sync-catalog-clusterrolebinding.yaml
-
-
----
-# Source: consul/templates/sync-catalog-deployment.yaml
-# The deployment for running the sync-catalog pod
-
----
-# Source: consul/templates/sync-catalog-podsecuritypolicy.yaml
-
-
----
-# Source: consul/templates/sync-catalog-serviceaccount.yaml
-
-
----
-# Source: vault/templates/server-config-configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: vaultdev-config
-  namespace: vlt-cons-dev
+  name: vault-config
+  namespace: clvault
   labels:
     helm.sh/chart: vault-0.2.1
     app.kubernetes.io/name: vault
-    app.kubernetes.io/instance: vaultdev
+    app.kubernetes.io/instance: vault
     app.kubernetes.io/managed-by: Tiller
-data:
-  extraconfig-from-values.hcl: |-
+data:  extraconfig-from-values.hcl: |-
     disable_mlock = true
     ui = true
-    
+
     listener "tcp" {
       tls_disable = 1
       address = "[::]:8200"
@@ -750,57 +21,40 @@ data:
     }
     storage "consul" {
       path = "vault"
-      address = "HOST_IP:8500"
+      address = "consul:8500"
     }
-    
-    # Example configuration for using auto-unseal, using Google Cloud KMS. The
-    # GKMS keys must already exist, and the cluster must have a service account
-    # that is authorized to access GCP KMS.
-    #seal "gcpckms" {
-    #   project     = "vault-helm-dev-246514"
-    #   region      = "global"
-    #   key_ring    = "vault-helm-unseal-kr"
-    #   crypto_key  = "vault-helm-unseal-key"
-    #}
-  
+
+
 
 ---
-# Source: vault/templates/server-serviceaccount.yaml
 
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: vaultdev
-  namespace: vlt-cons-dev
+  name: vault
+  namespace: clvault
   labels:
     helm.sh/chart: vault-0.2.1
     app.kubernetes.io/name: vault
-    app.kubernetes.io/instance: vaultdev
+    app.kubernetes.io/instance: vault
     app.kubernetes.io/managed-by: Tiller
-  
+
 
 
 ---
-# Source: vault/templates/server-service.yaml
-# Service for Vault cluster
 apiVersion: v1
 kind: Service
 metadata:
-  name: vaultdev
-  namespace: vlt-cons-dev
+  name: vault
+  namespace: clvault
   labels:
     helm.sh/chart: vault-0.2.1
     app.kubernetes.io/name: vault
-    app.kubernetes.io/instance: vaultdev
+    app.kubernetes.io/instance: vault
     app.kubernetes.io/managed-by: Tiller
   annotations:
-    # This must be set in addition to publishNotReadyAddresses due
-    # to an open issue where it may not work:
-    # https://github.com/kubernetes/kubernetes/issues/58662
     service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
 spec:
-  # We want the servers to become available even if they're not ready
-  # since this DNS is also used for join operations.
   publishNotReadyAddresses: true
   ports:
     - name: http
@@ -811,25 +65,23 @@ spec:
       targetPort: 8201
   selector:
     app.kubernetes.io/name: vault
-    app.kubernetes.io/instance: vaultdev
+    app.kubernetes.io/instance: vault
     component: server
 
 ---
-# Source: vault/templates/server-statefulset.yaml
-# StatefulSet to run the actual vault server cluster.
 
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: vaultdev
-  namespace: vlt-cons-dev
+  name: vault
+  namespace: clvault
   labels:
     helm.sh/chart: vault-0.2.1
     app.kubernetes.io/name: vault
-    app.kubernetes.io/instance: vaultdev
+    app.kubernetes.io/instance: vault
     app.kubernetes.io/managed-by: Tiller
 spec:
-  serviceName: vaultdev
+  serviceName: vault
   podManagementPolicy: Parallel
   replicas: 3
   updateStrategy:
@@ -838,60 +90,60 @@ spec:
     matchLabels:
       helm.sh/chart: vault-0.2.1
       app.kubernetes.io/name: vault
-      app.kubernetes.io/instance: vaultdev
+      app.kubernetes.io/instance: vault
       component: server
   template:
     metadata:
       labels:
         helm.sh/chart: vault-0.2.1
         app.kubernetes.io/name: vault
-        app.kubernetes.io/instance: vaultdev
+        app.kubernetes.io/instance: vault
         component: server
     spec:
-      
+
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
                   app.kubernetes.io/name: vault
-                  app.kubernetes.io/instance: "vaultdev"
+                  app.kubernetes.io/instance: "vault"
                   component: server
               topologyKey: kubernetes.io/hostname
-  
-      
-      
+
+
+
       terminationGracePeriodSeconds: 10
-      serviceAccountName: vaultdev
+      serviceAccountName: vault
       securityContext:
         runAsNonRoot: true
         runAsGroup: 1000
         runAsUser: 100
         fsGroup: 1000
       volumes:
-        
+
         - name: config
           configMap:
-            name: vaultdev-config
-  
+            name: vault-config
+
       containers:
         - name: vault
-          
+
           securityContext:
             capabilities:
               add: ["IPC_LOCK"]
           image: "vault:1.2.4"
           imagePullPolicy: IfNotPresent
-          command: 
+          command:
           - "/bin/sh"
           - "-ec"
-  
-          args: 
+
+          args:
           - |
             sed -E "s/HOST_IP/${HOST_IP?}/g" /vault/config/extraconfig-from-values.hcl > /tmp/storageconfig.hcl;
             sed -Ei "s/POD_IP/${POD_IP?}/g" /tmp/storageconfig.hcl;
             /usr/local/bin/docker-entrypoint.sh vault server -config=/tmp/storageconfig.hcl
-  
+
           env:
             - name: HOST_IP
               valueFrom:
@@ -909,16 +161,16 @@ spec:
               value: "true"
             - name: SKIP_SETCAP
               value: "true"
-            
-            
-            
+
+
+
           volumeMounts:
-          
-  
-  
+
+
+
             - name: config
               mountPath: /vault/config
-  
+
           ports:
             - containerPort: 8200
               name: http
@@ -927,11 +179,6 @@ spec:
             - containerPort: 8202
               name: replication
           readinessProbe:
-            # Check status; unsealed vault servers return 0
-            # The exit code reflects the seal status:
-            #   0 - unsealed
-            #   1 - error
-            #   2 - sealed
             exec:
               command: ["/bin/sh", "-ec", "vault status -tls-skip-verify"]
             failureThreshold: 2
@@ -940,53 +187,31 @@ spec:
             successThreshold: 1
             timeoutSeconds: 5
           lifecycle:
-            # Vault container doesn't receive SIGTERM from Kubernetes
-            # and after the grace period ends, Kube sends SIGKILL.  This 
-            # causes issues with graceful shutdowns such as deregistering itself
-            # from Consul (zombie services).
             preStop:
               exec:
                 command: ["/bin/sh","-c","kill -SIGTERM $(pidof vault)"]
-  
+
   volumeClaimTemplates:
-  
+
 
 
 ---
-# Source: vault/templates/server-disruptionbudget.yaml
-# PodDisruptionBudget to prevent degrading the server cluster through
-# voluntary cluster changes.
 apiVersion: policy/v1beta1
 kind: PodDisruptionBudget
 metadata:
-  name: vaultdev
-  namespace: vlt-cons-dev
+  name: vault
+  namespace: clvault
   labels:
     helm.sh/chart: vault-0.2.1
     app.kubernetes.io/name: vault
-    app.kubernetes.io/instance: vaultdev
+    app.kubernetes.io/instance: vault
     app.kubernetes.io/managed-by: Tiller
 spec:
   maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: vault
-      app.kubernetes.io/instance: vaultdev
+      app.kubernetes.io/instance: vault
       component: server
 ---
-# Source: vault/templates/server-clusterrolebinding.yaml
-
-
----
-# Source: vault/templates/server-ingress.yaml
-
-
----
-# Source: vault/templates/ui-service.yaml
-
-# Headless service for Vault server DNS entries. This service should only
-# point to Vault servers. For access to an agent, one should assume that
-# the agent is installed locally on the node and the NODE_IP should be used.
-# If the node can't run a Vault agent, then this service can be used to
-# communicate directly to a server agent.
 

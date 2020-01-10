@@ -1,0 +1,531 @@
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cl-consul-client-config
+  namespace: clvault
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+data:
+  extra-from-values.json: |-
+    {}
+
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cl-consul-server-config
+  namespace: clvault
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+data:
+  extra-from-values.json: |-
+    {}
+
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cl-consul-client
+  namespace: clvault
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cl-consul-server
+  namespace: clvault
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cl-consul-client
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+rules: []
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cl-consul-server
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+rules: []
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cl-consul-client
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cl-consul-client
+subjects:
+  - kind: ServiceAccount
+    name: cl-consul-client
+    namespace: clvault
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cl-consul-server
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cl-consul-server
+subjects:
+  - kind: ServiceAccount
+    name: cl-consul-server
+    namespace: clvault
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cl-consul-dns
+  namespace: clvault
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+spec:
+  ports:
+    - name: dns-tcp
+      port: 53
+      protocol: "TCP"
+      targetPort: dns-tcp
+    - name: dns-udp
+      port: 53
+      protocol: "UDP"
+      targetPort: dns-udp
+  selector:
+    app: consul
+    release: "cl"
+    hasDNS: "true"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cl-consul-server
+  namespace: clvault
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: http
+      port: 8500
+      targetPort: 8500
+    - name: serflan-tcp
+      protocol: "TCP"
+      port: 8301
+      targetPort: 8301
+    - name: serflan-udp
+      protocol: "UDP"
+      port: 8301
+      targetPort: 8301
+    - name: serfwan-tcp
+      protocol: "TCP"
+      port: 8302
+      targetPort: 8302
+    - name: serfwan-udp
+      protocol: "UDP"
+      port: 8302
+      targetPort: 8302
+    - name: server
+      port: 8300
+      targetPort: 8300
+    - name: dns-tcp
+      protocol: "TCP"
+      port: 8600
+      targetPort: dns-tcp
+    - name: dns-udp
+      protocol: "UDP"
+      port: 8600
+      targetPort: dns-udp
+  selector:
+    app: consul
+    release: "cl"
+    component: server
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cl-consul-ui
+  namespace: clvault
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+spec:
+  selector:
+    app: consul
+    release: "cl"
+    component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8500
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cl-consul
+  namespace: clvault
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+spec:
+  selector:
+    matchLabels:
+      app: consul
+      chart: consul-helm
+      release: cl
+      component: client
+      hasDNS: "true"
+  template:
+    metadata:
+      labels:
+        app: consul
+        chart: consul-helm
+        release: cl
+        component: client
+        hasDNS: "true"
+      annotations:
+        "consul.hashicorp.com/connect-inject": "false"
+    spec:
+      terminationGracePeriodSeconds: 10
+      serviceAccountName: cl-consul-client
+
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: cl-consul-client-config
+
+      containers:
+        - name: consul
+          image: "consul:1.6.2"
+          env:
+            - name: ADVERTISE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: NODE
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+
+          command:
+            - "/bin/sh"
+            - "-ec"
+            - |
+              CONSUL_FULLNAME="cl-consul"
+
+              exec /bin/consul agent \
+                -node="${NODE}" \
+                -advertise="${ADVERTISE_IP}" \
+                -bind=0.0.0.0 \
+                -client=0.0.0.0 \
+                -node-meta=pod-name:${HOSTNAME} \
+                -hcl="ports { grpc = 8502 }" \
+                -config-dir=/consul/config \
+                -datacenter=dc1 \
+                -data-dir=/consul/data \
+                -retry-join=${CONSUL_FULLNAME}-server-0.${CONSUL_FULLNAME}-server.${NAMESPACE}.svc \
+                -domain=consul
+          volumeMounts:
+            - name: data
+              mountPath: /consul/data
+            - name: config
+              mountPath: /consul/config
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                - /bin/sh
+                - -c
+                - consul leave
+          ports:
+            - containerPort: 8500
+              hostPort: 8500
+              name: http
+            - containerPort: 8502
+              hostPort: 8502
+              name: grpc
+            - containerPort: 8301
+              protocol: "TCP"
+              name: serflan-tcp
+            - containerPort: 8301
+              protocol: "UDP"
+              name: serflan-udp
+            - containerPort: 8302
+              name: serfwan
+            - containerPort: 8300
+              name: server
+            - containerPort: 8600
+              name: dns-tcp
+              protocol: "TCP"
+            - containerPort: 8600
+              name: dns-udp
+              protocol: "UDP"
+          readinessProbe:
+            exec:
+              command:
+                - "/bin/sh"
+                - "-ec"
+                - |
+                  curl http://127.0.0.1:8500/v1/status/leader 2>/dev/null | \
+                  grep -E '".+"'
+
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "cl-consul-test"
+  namespace: clvault
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+  annotations:
+    "helm.sh/hook": test-success
+spec:
+  containers:
+    - name: consul-test
+      image: "consul:1.6.2"
+      env:
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+      command:
+        - "/bin/sh"
+        - "-ec"
+        - |
+            export VALUE="cl"
+            export CONSUL_HTTP_ADDR="${HOST_IP}:8500"
+            consul kv delete _consul_helm_test
+            consul kv put _consul_helm_test $VALUE
+            [ `consul kv get _consul_helm_test` = "$VALUE" ]
+            consul kv delete _consul_helm_test
+  restartPolicy: Never
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cl-consul-server
+  namespace: clvault
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+    component: server
+spec:
+  serviceName: cl-consul-server
+  podManagementPolicy: Parallel
+  replicas: 1
+  selector:
+    matchLabels:
+      app: consul
+      chart: consul-helm
+      release: cl
+      component: server
+      hasDNS: "true"
+  template:
+    metadata:
+      labels:
+        app: consul
+        chart: consul-helm
+        release: cl
+        component: server
+        hasDNS: "true"
+      annotations:
+        "consul.hashicorp.com/connect-inject": "false"
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: consul
+                  release: "cl"
+                  component: server
+              topologyKey: kubernetes.io/hostname
+      terminationGracePeriodSeconds: 10
+      serviceAccountName: cl-consul-server
+      securityContext:
+        fsGroup: 1000
+      volumes:
+        - name: config
+          configMap:
+            name: cl-consul-server-config
+      containers:
+        - name: consul
+          image: "consul:1.6.2"
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+
+          command:
+            - "/bin/sh"
+            - "-ec"
+            - |
+              CONSUL_FULLNAME="cl-consul"
+
+              exec /bin/consul agent \
+                -advertise="${POD_IP}" \
+                -bind=0.0.0.0 \
+                -bootstrap-expect=1 \
+                -client=0.0.0.0 \
+                -config-dir=/consul/config \
+                -datacenter=dc1 \
+                -data-dir=/consul/data \
+                -domain=consul \
+                -hcl="connect { enabled = true }" \
+                -ui \
+                -retry-join=${CONSUL_FULLNAME}-server-0.${CONSUL_FULLNAME}-server.${NAMESPACE}.svc \
+                -server
+          volumeMounts:
+            - name: data-clvault
+              mountPath: /consul/data
+            - name: config
+              mountPath: /consul/config
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                - /bin/sh
+                - -c
+                - consul leave
+          ports:
+            - containerPort: 8500
+              name: http
+            - containerPort: 8301
+              name: serflan
+            - containerPort: 8302
+              name: serfwan
+            - containerPort: 8300
+              name: server
+            - containerPort: 8600
+              name: dns-tcp
+              protocol: "TCP"
+            - containerPort: 8600
+              name: dns-udp
+              protocol: "UDP"
+          readinessProbe:
+            exec:
+              command:
+                - "/bin/sh"
+                - "-ec"
+                - |
+                  curl http://127.0.0.1:8500/v1/status/leader 2>/dev/null | \
+                  grep -E '".+"'
+            failureThreshold: 2
+            initialDelaySeconds: 5
+            periodSeconds: 3
+            successThreshold: 1
+            timeoutSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data-clvault
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 3Gi
+
+---
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: cl-consul-server
+  namespace: clvault
+  labels:
+    app: consul
+    chart: consul-helm
+    heritage: Tiller
+    release: cl
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: consul
+      release: "cl"
+      component: server
+
+---
